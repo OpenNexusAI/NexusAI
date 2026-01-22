@@ -53,7 +53,7 @@ user_ref = db.collection("users").document(st.session_state.user_unique_id) if d
 
 # --- 4. SIDEBAR (History with Delete & Fix) ---
 with st.sidebar:
-    st.title("🌐 NexusAI Universal")
+    st.title("🌐 NexusAI Assistant")
     
     selected_ui_name = st.selectbox("Select Language / Izaberi jezik", list(GLOBAL_LANGUAGES.keys()))
     target_lang = GLOBAL_LANGUAGES[selected_ui_name]
@@ -181,3 +181,4 @@ if final_prompt or uploaded_file or camera_photo:
                     "timestamp": datetime.now()
                 })
             except: pass
+
