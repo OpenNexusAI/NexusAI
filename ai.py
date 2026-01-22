@@ -56,7 +56,7 @@ with st.sidebar:
     selected_lang = st.selectbox("Izaberi jezik / Language", list(LANGUAGES.keys()))
     target_lang = LANGUAGES[selected_lang]
     
-    if st.button("➕ Novi čet", use_container_width=True):
+    if st.button("➕ New chat", use_container_width=True):
         st.session_state.chat_id = str(uuid.uuid4())[:8]
         st.rerun()
     
@@ -110,3 +110,4 @@ if prompt:
         if db:
             try: db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).collection("messages").add({"role":"assistant", "text": ans, "timestamp": datetime.now()})
             except: pass
+
