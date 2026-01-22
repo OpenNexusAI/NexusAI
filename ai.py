@@ -6,109 +6,116 @@ from datetime import datetime
 import uuid
 import random
 
-# --- 1. FIREBASE SETUP ---
+# --- 1. FIREBASE SETUP (BEZ FAJLA - ČITA IZ SECRETS) ---
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate('serviceAccountKey.json')
+        # Uzimamo podatke iz tvog Secrets-a
+        s = st.secrets["firebase"]
+        
+        # Pravimo rečnik koji Firebase prihvata
+        fb_credentials = {
+            "type": "service_account",
+            "project_id": s["project_id"],
+            "private_key_id": "eecd76124b0bb41c6c43d72db01c47203a29cc7d",
+            "private_key": s["private_key"],
+            "client_email": s["client_email"],
+            "client_id": "110901490489199893217",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{s['client_email'].replace('@', '%40')}"
+        }
+        
+        cred = credentials.Certificate(fb_credentials)
         firebase_admin.initialize_app(cred)
     except Exception as e:
         st.error(f"NexusAI Connection Error: {e}")
 
-db = firestore.client()
+# Inicijalizacija baze (ako je sve OK sa gornjim delom, ovo neće baciti error)
+try:
+    db = firestore.client()
+except:
+    st.error("Baza nije dostupna. Proveri Secrets!")
 
-# --- 2. SESSION STATE ---
+# --- 2. CONFIG I UI ---
+st.set_page_config(page_title="NexusAI", page_icon="🌐", layout="wide")
+
 if "chat_id" not in st.session_state:
     st.session_state.chat_id = str(uuid.uuid4())[:8]
 
-# --- 3. UI CONFIG (NexusAI Branding) ---
-st.set_page_config(page_title="NexusAI Assistant", page_icon="🌐", layout="wide")
-user_id = "owner_petar_nexus" # Unique owner ID
-
-# --- 4. SIDEBAR (NexusAI History) ---
+# --- 3. SIDEBAR (ISTORIJA IZ BAZE) ---
 with st.sidebar:
     st.title("🌐 NexusAI")
-    st.subheader("Control Center")
-    if st.button("➕ New Nexus Chat", use_container_width=True):
+    if st.button("➕ New Chat", use_container_width=True):
         st.session_state.chat_id = str(uuid.uuid4())[:8]
         st.rerun()
-
+    
     st.divider()
-    st.subheader("Memory Bank")
+    st.subheader("Recent Nexus Chats")
     try:
-        # Loading from the new nexus_chats collection
-        history_ref = db.collection("nexus_chats").document(user_id).collection("sessions").order_by("start_time", direction=firestore.Query.DESCENDING).limit(15)
-        for session in history_ref.stream():
-            sess_data = session.to_dict()
-            title = sess_data.get("first_msg", "New Connection")[:25]
-            if st.button(f"💬 {title}", key=session.id):
-                st.session_state.chat_id = session.id
+        # Koristimo fixnog usera 'petar' za internet verziju
+        history = db.collection("nexus_chats").document("petar").collection("sessions").order_by("start_time", direction=firestore.Query.DESCENDING).limit(10).stream()
+        for h in history:
+            title = h.to_dict().get("first_msg", "New Chat")[:20]
+            if st.button(f"💬 {title}", key=h.id):
+                st.session_state.chat_id = h.id
                 st.rerun()
     except:
-        st.write("NexusAI memory is empty.")
+        st.write("No history found.")
 
-st.title("🌐 NexusAI: The Ultimate Interface")
+# --- 4. PRIKAZ PORUKA ---
+st.title("🌐 NexusAI Assistant")
 
-# --- 5. LOAD CURRENT CHAT ---
-messages_ref = db.collection("nexus_chats").document(user_id).collection("sessions").document(st.session_state.chat_id).collection("messages").order_by("timestamp")
-current_messages = list(messages_ref.stream())
+try:
+    messages_ref = db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).collection("messages").order_by("timestamp")
+    for m_doc in messages_ref.stream():
+        m = m_doc.to_dict()
+        with st.chat_message(m["role"]):
+            if "https://image.pollinations.ai" in m["text"]:
+                st.image(m["text"])
+            else:
+                st.write(m["text"])
+except:
+    st.info("Start a new conversation!")
 
-for msg_doc in current_messages:
-    m = msg_doc.to_dict()
-    with st.chat_message(m["role"]):
-        if "https://image.pollinations.ai" in m["text"]:
-            st.image(m["text"], caption="NexusAI Vision")
-        else:
-            st.write(m["text"])
-
-# --- 6. NEXUS LOGIC (FORCED IMAGE & SMART TALK) ---
+# --- 5. KOMANDE I LOGIKA ---
 prompt = st.chat_input("Command NexusAI...")
 
 if prompt:
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.write(prompt)
 
-    # Initial session setup
-    if not current_messages:
-        db.collection("nexus_chats").document(user_id).collection("sessions").document(st.session_state.chat_id).set({
-            "first_msg": prompt, "start_time": datetime.now()
-        })
-
-    db.collection("nexus_chats").document(user_id).collection("sessions").document(st.session_state.chat_id).collection("messages").add({
+    # Čuvanje u bazu
+    db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).set({
+        "first_msg": prompt, "start_time": datetime.now()
+    }, merge=True)
+    
+    db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).collection("messages").add({
         "role": "user", "text": prompt, "timestamp": datetime.now()
     })
 
-    # PRO IMAGE GENERATION (NexusVision)
-    img_triggers = ["draw", "image", "picture", "generate", "create", "photo", "paint", "sliku", "nacrtaj"]
+    # Provera za slike
+    img_triggers = ["draw", "image", "slika", "nacrtaj", "photo", "picture"]
     if any(word in prompt.lower() for word in img_triggers):
         with st.chat_message("assistant"):
-            with st.spinner("🌐 NexusAI is visualizing..."):
-                seed = random.randint(0, 9999999)
-                clean_prompt = prompt.lower()
-                for word in img_triggers:
-                    clean_prompt = clean_prompt.replace(word, "")
-                
-                # Using the Pro Flux engine
-                img_url = f"https://image.pollinations.ai/prompt/{clean_prompt.strip().replace(' ', '%20')}?width=1024&height=1024&model=flux&nologo=true&seed={seed}&enhance=true"
-                
+            with st.spinner("🌐 Nexus is drawing..."):
+                seed = random.randint(0, 999999)
+                clean_p = prompt.lower()
+                for w in img_triggers: clean_p = clean_p.replace(w, "")
+                img_url = f"https://image.pollinations.ai/prompt/{clean_p.strip().replace(' ', '%20')}?width=1024&height=1024&model=flux&nologo=true&seed={seed}"
                 st.image(img_url)
-                
-                db.collection("nexus_chats").document(user_id).collection("sessions").document(st.session_state.chat_id).collection("messages").add({
+                db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).collection("messages").add({
                     "role": "assistant", "text": img_url, "timestamp": datetime.now()
                 })
     else:
-        # SMART TALK (Direct, Cool, No "Vi")
         with st.chat_message("assistant"):
             try:
-                # Core instruction for NexusAI persona
-                sys_prompt = "Your name is NexusAI. You are a high-tech, direct, and cool AI assistant. Speak naturally like a friend. Never use 'Vi' or formal plural. English only. "
-                api_url = f"https://text.pollinations.ai/{sys_prompt}{prompt}?model=openai"
-                response = requests.get(api_url)
-                ai_text = response.text
-                
-                st.markdown(ai_text)
-                
-                db.collection("nexus_chats").document(user_id).collection("sessions").document(st.session_state.chat_id).collection("messages").add({
-                    "role": "assistant", "text": ai_text, "timestamp": datetime.now()
+                # Instrukcija da ne crta ASCII i da bude NexusAI
+                sys_p = "Your name is NexusAI. Talk naturally, no formal 'Vi'. Direct and cool. NEVER use ASCII art. English only. "
+                res = requests.get(f"https://text.pollinations.ai/{sys_p}{prompt}?model=openai")
+                st.write(res.text)
+                db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).collection("messages").add({
+                    "role": "assistant", "text": res.text, "timestamp": datetime.now()
                 })
             except:
-                st.error("NexusAI Core Offline. Check Connection.")
+                st.error("Nexus Brain offline.")
