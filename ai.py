@@ -39,7 +39,6 @@ if firebase_admin._apps and not db:
 # --- 3. CONFIG & UI STYLE ---
 st.set_page_config(page_title="NexusAI Ultra", page_icon="⚙️", layout="wide")
 
-# GLOBAL LANGUAGES
 GLOBAL_LANGUAGES = {
     "Srpski 🇷🇸": "Serbian", "English 🇺🇸": "English", "Deutsch 🇩🇪": "German",
     "Français 🇫🇷": "French", "Español 🇪🇸": "Spanish", "Italiano 🇮🇹": "Italian",
@@ -55,7 +54,16 @@ with st.sidebar:
     # SETTINGS SECTION ⚙️
     with st.expander("⚙️ Settings & Persona", expanded=False):
         ui_mode = st.toggle("OLED Dark Mode", value=True)
-        persona = st.selectbox("AI Tone", ["Professional", "Creative", "Sarcastic", "Academic"])
+        
+        # DODATA "OTHER" OPCIJA
+        persona_options = ["Professional", "Creative", "Sarcastic", "Academic", "Other"]
+        persona = st.selectbox("AI Tone", persona_options)
+        
+        # POLJE ZA CUSTOM INSTRUKCIJE
+        custom_instructions = ""
+        if persona == "Other":
+            custom_instructions = st.text_area("Custom Persona:", placeholder="E.g. Talk like a pirate, be a math tutor...")
+            
         ans_length = st.select_slider("Response Length", options=["Short", "Balanced", "Detailed"], value="Balanced")
         font_size = st.slider("Font Size", 12, 24, 16)
         web_search = st.toggle("Simulate Web Search", value=True)
@@ -88,7 +96,7 @@ with st.sidebar:
                         st.rerun()
         except: pass
 
-# --- 5. STYLE INJECTION (Font & Mode) ---
+# --- 5. STYLE INJECTION ---
 st.markdown(f"""
     <style>
     html, body, [class*="st-"] {{ font-size: {font_size}px; }}
@@ -97,7 +105,8 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # --- 6. MAIN CHAT DISPLAY ---
-st.title(f"🌐 NexusAI Console ({persona})")
+current_persona_name = custom_instructions[:15] + "..." if persona == "Other" and custom_instructions else persona
+st.title(f"🌐 NexusAI Console ({current_persona_name})")
 chat_context = ""
 
 if user_ref:
@@ -112,7 +121,9 @@ if user_ref:
             if i > len(all_msgs) - 7: chat_context += f"{m['role']}: {m['text']}\n"
     except: pass
 
-# --- 7. BOTTOM MENU (Plus, Mic & Input) ---
+st.write("---")
+
+# --- 7. BOTTOM MENU ---
 audio_text = None
 with st.container():
     col_plus, col_mic, col_txt = st.columns([0.07, 0.07, 0.86])
@@ -149,9 +160,12 @@ if final_prompt or uploaded_file or camera_photo:
                 ans = f"https://image.pollinations.ai/prompt/{final_prompt.replace(' ', '%20')}?width=1024&height=1024&model=flux&seed={random.randint(0,99999)}"
                 st.image(ans)
             else:
-                # INTEGRACIJA SETTINGS-A U SYSTEM PROMPT
-                web_info = "Search for current 2024/2025 information if needed." if web_search else "Use internal knowledge."
-                sys_instr = f"Name: NexusAI. Language: {target_lang}. Tone: {persona}. Length: {ans_length}. {web_info}. Context:\n{chat_context}"
+                # INTEGRACIJA CUSTOM INSTRUKCIJA
+                final_persona = custom_instructions if persona == "Other" else persona
+                web_info = "Search for current 2024/2025 information." if web_search else "Use internal knowledge."
+                
+                sys_instr = f"Name: NexusAI. Language: {target_lang}. Tone/Instructions: {final_persona}. Length: {ans_length}. {web_info}. Context:\n{chat_context}"
+                
                 try:
                     res = requests.get(f"https://text.pollinations.ai/{sys_instr} User: {final_prompt}?model=openai")
                     ans = res.text
