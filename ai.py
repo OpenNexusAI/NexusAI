@@ -6,8 +6,7 @@ from datetime import datetime
 import uuid
 import random
 
-# --- 1. USER SESSION & PRIVACY FIX ---
-# Generišemo ID korisnika koji je jedinstven za njegov browser
+# --- 1. USER SESSION & PRIVACY ---
 if "user_unique_id" not in st.session_state:
     st.session_state.user_unique_id = str(uuid.uuid4())[:12]
 
@@ -40,22 +39,18 @@ if firebase_admin._apps and not db:
 
 # --- 3. CONFIG ---
 st.set_page_config(page_title="NexusAI Pro", page_icon="🌐", layout="wide")
-
-# Putanja u bazi: users -> [jedinstveni_id] -> sessions -> [chat_id]
 user_ref = db.collection("users").document(st.session_state.user_unique_id) if db else None
 
-# --- 4. SIDEBAR (History restricted to current user) ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
     st.title("🌐 NexusAI Navigation")
-    st.caption(f"Your ID: {st.session_state.user_unique_id}") # Da vidiš da je tvoj ID unikatan
-    
+    st.caption(f"Secure User ID: {st.session_state.user_unique_id}")
     if st.button("➕ New Chat", use_container_width=True):
         st.session_state.chat_id = str(uuid.uuid4())[:8]
         st.rerun()
-    
     st.divider()
     if user_ref:
-        st.subheader("Your Chat History")
+        st.subheader("History")
         try:
             history = user_ref.collection("sessions").order_by("start_time", direction=firestore.Query.DESCENDING).limit(10).stream()
             for h in history:
@@ -69,7 +64,7 @@ with st.sidebar:
 st.title("🌐 NexusAI Console")
 chat_context = ""
 
-# Prikaz samo tvojih poruka
+# Prikaz poruka (History)
 if user_ref:
     try:
         msgs_ref = user_ref.collection("sessions").document(st.session_state.chat_id).collection("messages").order_by("timestamp")
@@ -83,17 +78,28 @@ if user_ref:
                 chat_context += f"{m['role']}: {m['text']}\n"
     except: pass
 
-# --- 6. ATTACHMENT MENU ---
-col1, col2 = st.columns([0.07, 0.93])
-with col1:
-    with st.popover("➕"):
-        st.write("### Attachments")
-        uploaded_file = st.file_uploader("Upload Image/File", type=['png', 'jpg', 'jpeg', 'pdf', 'txt'])
-        camera_photo = st.camera_input("Use Camera")
+# Razmak da poruke ne bi bile ispod inputa
+st.write("---")
 
-prompt = st.chat_input("Message NexusAI...")
+# --- 6. BOTTOM MENU (Attachments + Input) ---
+# Attachment menu postavljen dole
+with st.container():
+    col_btn, col_txt = st.columns([0.1, 0.9])
+    
+    with col_btn:
+        with st.popover("➕"):
+            st.write("### Attachments")
+            # File uploader na mobilnom nudi Galeriju/Slike
+            uploaded_file = st.file_uploader("Gallery / Files", type=['png', 'jpg', 'jpeg', 'pdf', 'txt'])
+            
+            st.divider()
+            # Kamera se pali samo na prekidač
+            use_cam = st.toggle("Enable Camera")
+            camera_photo = st.camera_input("Take Photo") if use_cam else None
 
-# --- 7. CHAT LOGIC ---
+    prompt = st.chat_input("Type your message here...")
+
+# --- 7. CHAT LOGIKA ---
 if prompt or uploaded_file or camera_photo:
     user_display_text = prompt if prompt else "Sent an attachment."
     
@@ -122,7 +128,7 @@ if prompt or uploaded_file or camera_photo:
                 st.image(ans)
             else:
                 sys_instr = f"Your name is NexusAI. Respond only in English. Context:\n{chat_context}"
-                final_input = f"{prompt} (User sent attachment)" if (uploaded_file or camera_photo) else prompt
+                final_input = f"{prompt} (Attachment included)" if (uploaded_file or camera_photo) else prompt
                 try:
                     res = requests.get(f"https://text.pollinations.ai/{sys_instr} User: {final_input}?model=openai")
                     ans = res.text
