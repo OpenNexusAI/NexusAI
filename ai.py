@@ -89,7 +89,7 @@ with st.sidebar:
         except: pass
 
 # --- 5. MAIN INTERFACE ---
-st.title(f"🌐 NexusAI Console")
+st.title(f"🌐 NexusAI Assistant")
 chat_context = ""
 
 if user_ref:
@@ -181,4 +181,5 @@ if final_prompt or uploaded_file or camera_photo:
                     "timestamp": datetime.now()
                 })
             except: pass
+
 
