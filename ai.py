@@ -53,7 +53,7 @@ if "chat_id" not in st.session_state:
 # --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("🌐 NexusAI Global")
-    selected_lang = st.selectbox("Izaberi jezik / Language", list(LANGUAGES.keys()))
+    selected_lang = st.selectbox("Choose Language", list(LANGUAGES.keys()))
     target_lang = LANGUAGES[selected_lang]
     
     if st.button("➕ New chat", use_container_width=True):
@@ -62,7 +62,7 @@ with st.sidebar:
     
     st.divider()
     if db:
-        st.subheader("Istorija")
+        st.subheader("Chat History")
         try:
             history = db.collection("nexus_chats").document("petar").collection("sessions").order_by("start_time", direction=firestore.Query.DESCENDING).limit(10).stream()
             for h in history:
@@ -110,4 +110,5 @@ if prompt:
         if db:
             try: db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).collection("messages").add({"role":"assistant", "text": ans, "timestamp": datetime.now()})
             except: pass
+
 
