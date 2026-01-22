@@ -6,17 +6,21 @@ from datetime import datetime
 import uuid
 import random
 
-# --- 1. FIREBASE SETUP (FINAL CLEAN VERSION) ---
+# --- 1. FIREBASE SETUP (FINALNA POPRAVKA ZA KLJUČ) ---
 db = None
 if not firebase_admin._apps:
     try:
         s = st.secrets["firebase"]
         
+        # Uzimamo ključ i nasilno popravljamo nove redove koje Streamlit kvari
+        raw_key = s["private_key"]
+        clean_key = raw_key.replace("\\n", "\n")
+        
         fb_creds = {
             "type": "service_account",
             "project_id": s["project_id"],
             "private_key_id": "eecd76124b0bb41c6c43d72db01c47203a29cc7d",
-            "private_key": s["private_key"], # Direktno čitanje jer su tri navodnika u Secrets
+            "private_key": clean_key,
             "client_email": s["client_email"],
             "client_id": "110901490489199893217",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -29,10 +33,10 @@ if not firebase_admin._apps:
         firebase_admin.initialize_app(cred)
         db = firestore.client()
     except Exception as e:
-        # Prikazuje grešku samo ako baza ne radi, ali ne ruši ostatak sajta
-        st.error(f"⚠️ Skoro smo tamo! Baza još uvek odbija ključ, ali AI radi. (Error: {e})")
+        # Prikazuje grešku samo ako baza ne radi, ali AI će i dalje raditi
+        st.error(f"⚠️ Baza nije povezana, ali AI radi. Greška: {e}")
 
-# Ako je aplikacija već inicijalizovana, obezbeđujemo db objekat
+# Osiguravamo db objekat ako je aplikacija već podignuta
 if firebase_admin._apps and not db:
     try:
         db = firestore.client()
@@ -50,6 +54,7 @@ LANGUAGES = {
     "Español": "Spanish",
     "Italiano": "Italian",
     "Русский": "Russian",
+    "Português": "Portuguese",
     "தமிழ் (Tamil)": "Tamil",
     "日本語 (Japanese)": "Japanese",
     "العربية (Arabic)": "Arabic"
@@ -62,7 +67,6 @@ if "chat_id" not in st.session_state:
 with st.sidebar:
     st.title("🌐 NexusAI Settings")
     
-    # Izbor jezika
     selected_lang = st.selectbox("Izaberi jezik / Select Language", list(LANGUAGES.keys()))
     target_lang = LANGUAGES[selected_lang]
     
@@ -83,10 +87,9 @@ with st.sidebar:
         except:
             st.write("History unavailable.")
 
-# --- 4. GLAVNI CHAT PROZOR ---
+# --- 4. GLAVNI CHAT ---
 st.title(f"🌐 NexusAI ({selected_lang})")
 
-# Prikaz starih poruka iz baze
 if db:
     try:
         messages_ref = db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).collection("messages").order_by("timestamp")
@@ -100,15 +103,12 @@ if db:
     except:
         pass
 
-# Input za nove poruke
 prompt = st.chat_input(f"Type in {selected_lang}...")
 
 if prompt:
-    # 1. Prikaži korisnikovu poruku
     with st.chat_message("user"):
         st.write(prompt)
 
-    # 2. Sačuvaj u bazu ako je dostupna
     if db:
         try:
             db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).set({
@@ -120,11 +120,9 @@ if prompt:
         except:
             pass
 
-    # 3. Generisanje odgovora
     with st.chat_message("assistant"):
         img_triggers = ["draw", "image", "slika", "nacrtaj", "photo", "prikazi"]
         
-        # Ako korisnik traži sliku
         if any(word in prompt.lower() for word in img_triggers):
             with st.spinner("🌐 Nexus is drawing..."):
                 seed = random.randint(0, 999999)
@@ -133,8 +131,6 @@ if prompt:
                 img_url = f"https://image.pollinations.ai/prompt/{clean_p.strip().replace(' ', '%20')}?width=1024&height=1024&model=flux&nologo=true&seed={seed}"
                 st.image(img_url)
                 ans_text = img_url
-        
-        # Ako korisnik traži tekst
         else:
             sys_instr = f"Your name is NexusAI. Respond ONLY in {target_lang} language. Never use ASCII art. Be modern and helpful."
             try:
@@ -143,9 +139,8 @@ if prompt:
                 ans_text = res.text
             except:
                 st.error("Nexus Brain offline.")
-                ans_text = "Error connecting to AI."
+                ans_text = "Error."
 
-        # 4. Sačuvaj odgovor asistenta u bazu
         if db:
             try:
                 db.collection("nexus_chats").document("petar").collection("sessions").document(st.session_state.chat_id).collection("messages").add({
